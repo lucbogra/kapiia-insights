@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('archetype_criteria', function (Blueprint $table) {
-            $table->ulid()->primary();
+            $table->ulid('id')->primary();
 
             // Clé machine unique, ex: 'birth_year', 'sex', 'sibling_count'
             $table->string('key', 50)->unique();
@@ -44,6 +44,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('archetype_criteria');
+        Schema::dropIfExists('archetype_criterias');
     }
 };

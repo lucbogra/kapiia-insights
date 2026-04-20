@@ -12,8 +12,6 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('archetype_source_connection', function (Blueprint $table) {
-            $table->ulid('id')->primary();
-
             $table->ulid('archetype_id');
             $table->ulid('source_connection_id');
 
@@ -28,7 +26,8 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             // Unicité de la paire pour éviter les doublons
-            $table->unique(['archetype_id', 'source_connection_id']);
+            $table->primary(['archetype_id', 'source_connection_id']);
+
             $table->timestamps();
         });
     }
