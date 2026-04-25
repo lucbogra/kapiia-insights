@@ -1,0 +1,77 @@
+
+Quelques points à affiner
+1. La BD centrale ("meta-base") vs les BDs sources
+LeBI aura besoin d'une BD propre à lui, distincte des BDs Kapiia. Elle contiendra :
+
+La table des connexions aux BDs sources
+La table des critères
+La table des archétypes / nomenclatures
+Et potentiellement un cache des données agrégées extraites
+
+Les BDs Kapiia (une par site) sont en lecture seule depuis le système BI.
+2. Le modèle des archétypes
+La logique de combinaison de critères mérite d'être bien modélisée. Chaque critère a une valeur (ou une plage), et un archétype est une combinaison de valeurs de critères. La nomenclature (ex: M-12-1F-SEP) est générée à partir de cette combinaison. Quelques questions clés :
+
+Est-ce que les critères sont tous discrets (sexe, orphelin) ou certains sont des plages (âge entre 10 et 13 ans) ?
+Est-ce qu'un archétype peut avoir des critères partiels (ex: seulement sexe + tranche d'âge, sans préciser le reste) ?
+Est-ce que la nomenclature est générée automatiquement ou saisie manuellement ?
+
+3. L'extraction multi-BD
+Interroger plusieurs BDs Kapiia en parallèle et agréger les résultats côté PHP est faisable mais demande une couche d'abstraction soignée. L'architecture DDD est bien adaptée pour ça : un ArchetypeAnalysisService qui orchestre des SourceDatabaseRepository dynamiquement instanciés selon la connexion.
+
+Points clés de conception :
+Le criteria_hash est la clé de déduplication : avant de créer un archétype, on hashe la représentation JSON canonique (clés triées, valeurs normalisées) et on vérifie l'unicité. Ça évite les doublons même si la nomenclature est éditée manuellement.
+La nomenclature est générée automatiquement à la création (via un NomenclatureGenerator dans le domain layer) à partir des nomenclature_prefix de chaque critère, puis stockée — et donc éditable sans casser le hash.
+Le cache aggregated_results mérite une table dédiée qu'on peut concevoir quand on attaque la couche d'extraction.
+
+Sécurité des mots de passe : le decrypt() dans la factory suppose qu'on stocke les mots de passe avec encrypt() de Laravel (AES-256-CBC via APP_KEY). C'est suffisant pour un démarrage, mais une solution plus robuste à terme serait un vault (ex: HashiCorp Vault ou Laravel Encrypter avec rotation de clé).
+Passage en parallèle : quand le nombre de sources devient important (10+ sites), le séquentiel devient lent. Le QueryOrchestrator peut être refactorisé pour dispatcher des FetchSourceDataJob en batch et collecter les résultats via un AnalysisBatch stocké en base — c'est un chantier distinct.
+Colonnes sur les BDs Kapiia : les noms de colonnes dans buildPopulationConstraints (usagers.birth_year, usagers.sex…) supposent une structure commune. Comme chaque site peut personnaliser son Kapiia, il faudra une couche de mapping par source — on peut y revenir.
+
+
+Principe des indicateurs : double définition
+Un indicateur vit à deux endroits :
+
+En code : une classe PHP implémentant IndicatorInterface qui fait le calcul
+En base : une ligne IndicatorDefinition qui l'expose dans l'UI (label, description, ordre)
+Les deux sont liés par une key unique. L'admin ne peut pas créer un indicateur de toutes pièces via Filament — il active / désactive / renomme ceux qui existent en code. Ça garantit qu'un indicateur sélectionné pointe toujours vers une implémentation valide.
+
+Principe des Précisions
+Une Précision est un filtre comportemental appliqué à la population après les critères d'identité. Elle génère une contrainte SQL de type HAVING (sur des agrégats) ou WHERE avec sous-requête.
+Trois précisions pour démarrer :
+
+Nombre minimum d'incidents : usager a >= N incidents
+Seuil de gravité : usager a >= N incidents avec gravité >= G
+Plage de dates : incidents entre date1 et date2 (affecte le dataset, pas la population)
+
+Contrairement aux Indicateurs qui calculent un résultat, les Précisions modifient la query — elles doivent savoir exprimer leur contrainte SQL.
+
+La distinction PopulationFilter / DatasetFilter est importante :
+
+PopulationFilter : « garder seulement les usagers qui… » → modifie la liste des usager_id éligibles
+DatasetFilter : « compter seulement les incidents qui… » → modifie le dataset analysé, sans exclure d'usager
+
+
+Modèle conceptuel du Scenario
+Un Scenario contient :
+
+Source de population (au choix) :
+
+Soit un archetype_id existant
+Soit des criteria_values saisis directement (comme dans un archétype)
+
+Précisions appliquées : liste d'ID de PrecisionDefinition + leurs paramètres (ex: min_count = 15)
+Indicateurs sélectionnés : liste d'ID de IndicatorDefinition + leurs paramètres (ex: limit = 5)
+Sources de données : quelles BDs Kapiia interroger
+Métadonnées : nom, description, propriétaire, partage
+
+Le RunScenarioUseCase est complet. Le flux :
+Charge le scénario et vérifie les droits
+Résout les critères d'identité (archétype ou custom) en ArchetypePopulationFilter
+Résout les précisions (Registry + paramètres) en tableau de contraintes applicables
+Résout les indicateurs (Registry + paramètres) en tableau d'exécutables
+Exécute les queries sur toutes les sources Kapiia, en appliquant critères + précisions
+Fait calculer chaque indicateur sélectionné sur son dataset cible
+Retourne un ScenarioResult structuré
+
+Le ResultAggregator initial n'est plus utilisé ici — les indicateurs sont la nouvelle couche d'agrégation, pilotée par l'utilisateur.

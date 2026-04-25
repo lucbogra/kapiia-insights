@@ -67,11 +67,11 @@
                         Gravité moyenne des incidents
                     </p>
                     <p class="mt-1 text-4xl font-bold
-                        @if($this->getAverageSeverity() >= 4) text-danger-600
-                        @elseif($this->getAverageSeverity() >= 3) text-warning-600
+                        @if($this->getAverageGravite() >= 4) text-danger-600
+                        @elseif($this->getAverageGravite() >= 3) text-warning-600
                         @else text-success-600
                         @endif">
-                        {{ number_format($this->getAverageSeverity(), 1) }}
+                        {{ number_format($this->getAverageGravite(), 1) }}
                         <span class="text-lg font-normal text-gray-400">/ 5</span>
                     </p>
                 </div>
@@ -134,8 +134,8 @@
                     <div class="space-y-2">
                         @foreach(range(1, 5) as $level)
                             @php
-                                $count = $this->getSeverityDistribution()[$level] ?? 0;
-                                $total = array_sum($this->getSeverityDistribution());
+                                $count = $this->getGraviteDistribution()[$level] ?? 0;
+                                $total = array_sum($this->getGraviteDistribution());
                                 $pct   = $total > 0 ? round(($count / $total) * 100) : 0;
                                 $color = match($level) {
                                     1 => 'bg-success-400',

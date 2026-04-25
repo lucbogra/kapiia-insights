@@ -6,8 +6,8 @@ final class RangeCriterion implements CriterionInterface
 {
     public function __construct(
         private readonly string $column,
-        private readonly int|float $min,
-        private readonly int|float $max,
+        private readonly int|float|null $min,
+        private readonly int|float|null $max,
     ) {}
 
     public function column(): string
@@ -15,12 +15,12 @@ final class RangeCriterion implements CriterionInterface
         return $this->column;
     }
 
-    public function min(): int|float
+    public function min(): int|float|null
     {
         return $this->min;
     }
 
-    public function max(): int|float
+    public function max(): int|float|null
     {
         return $this->max;
     }

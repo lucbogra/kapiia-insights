@@ -2,8 +2,8 @@
 
 namespace App\BI\DataSource\Application;
 
-use App\BI\DataSource\Domain\SourceConnection;
 use App\BI\DataSource\Domain\Repository\SourceConnectionRepositoryInterface;
+use App\BI\DataSource\Domain\SourceConnection;
 use App\BI\DataSource\Infrastructure\DynamicConnectionFactory;
 use Illuminate\Support\Str;
 
@@ -11,28 +11,28 @@ class SourceConnectionService
 {
     public function __construct(
         private readonly SourceConnectionRepositoryInterface $repository,
-        private readonly DynamicConnectionFactory            $connectionFactory,
+        private readonly DynamicConnectionFactory $connectionFactory,
     ) {}
 
     public function create(
         string $label,
         string $host,
-        int    $port,
+        int $port,
         string $databaseName,
         string $username,
         string $password,
         string $driver = 'mysql',
     ): SourceConnection {
         $connection = new SourceConnection(
-            id:           (string) Str::ulid(),
-            label:        $label,
-            host:         $host,
-            port:         $port,
+            id: strtolower((string) Str::ulid()),
+            label: $label,
+            host: $host,
+            port: $port,
             databaseName: $databaseName,
-            username:     $username,
-            password:     $password,
-            driver:       $driver,
-            isActive:     true,
+            username: $username,
+            password: $password,
+            driver: $driver,
+            isActive: true,
         );
 
         $this->repository->save($connection);
@@ -67,15 +67,15 @@ class SourceConnectionService
         }
 
         $this->repository->save(new SourceConnection(
-            id:           $connection->id,
-            label:        $connection->label,
-            host:         $connection->host,
-            port:         $connection->port,
+            id: $connection->id,
+            label: $connection->label,
+            host: $connection->host,
+            port: $connection->port,
             databaseName: $connection->databaseName,
-            username:     $connection->username,
-            password:     $connection->password,
-            driver:       $connection->driver,
-            isActive:     false,
+            username: $connection->username,
+            password: $connection->password,
+            driver: $connection->driver,
+            isActive: false,
             lastTestedAt: $connection->lastTestedAt,
         ));
     }

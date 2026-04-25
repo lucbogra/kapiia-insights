@@ -3,8 +3,10 @@
 namespace App\BI\Analysis\Infrastructure\Persistence;
 
 use App\BI\Analysis\Application\DTO\IncidentData;
-use App\BI\Analysis\Application\DTO\TransmissionData;
 use App\BI\Analysis\Domain\ArchetypePopulationFilter;
+use App\BI\Analysis\Domain\Precision\PrecisionInterface;
+use App\BI\Analysis\Domain\Precision\PrecisionTargetEnum;
+use App\BI\Analysis\Domain\Precision\PrecisionTypeEnum;
 use App\BI\Profiling\Domain\Criteria\CriterionInterface;
 use App\BI\Profiling\Domain\Criteria\DiscreteCriterion;
 use App\BI\Profiling\Domain\Criteria\RangeCriterion;
@@ -15,7 +17,7 @@ final class KapiiaSourceRepository
 {
     public function __construct(
         private readonly ConnectionInterface $connection,
-        private readonly string              $sourceLabel,
+        private readonly string $sourceLabel,
     ) {}
 
     /**
@@ -33,45 +35,17 @@ final class KapiiaSourceRepository
                 'incidents.gravite',
                 'incidents.date_incident',
                 'incidents.lieu',
-                'incident_attitudes.attitude as attitude'
+                'incident_attitudes.attitude as attitude',
             ])
             ->where($this->populationConstraints($filter))
             ->get()
-            ->map(fn($row) => new IncidentData(
-                intitule:       $row->intitule,
-                gravite:        (int) $row->gravite,
-                dateIncident:   $row->date_incident,
-                lieu:           $row->lieu,
-                attitude:       $row->attitude,
-                sourceLabel:    $this->sourceLabel
-            ));
-    }
-
-    /**
-     * @return Collection<TransmissionData>
-     */
-    public function getTransmissionIndicators(ArchetypePopulationFilter $filter): Collection
-    {
-        return $this->connection
-            ->table('transmission_activities')
-            ->join('transmissions', 'transmission_activities.transmission_id', '=', 'transmissions.id')
-            ->join('users', 'transmissions.user_id', '=', 'users.id')
-            ->select([
-                'transmission_activities.activity_slug',
-                'transmission_activities.concentration',
-                'transmission_activities.behavior',
-                'transmission_activities.social',
-                'transmissions.transmitted_at',
-            ])
-            ->where($this->populationConstraints($filter))
-            ->get()
-            ->map(fn($row) => new TransmissionData(
-                activitySlug:  $row->activity_slug,
-                concentration: (int) $row->concentration,
-                behavior:      (int) $row->behavior,
-                social:        (int) $row->social,
-                transmittedAt: $row->transmitted_at,
-                sourceLabel:   $this->sourceLabel,
+            ->map(fn ($row) => new IncidentData(
+                intitule: $row->intitule,
+                gravite: (int) $row->gravite,
+                dateIncident: $row->date_incident,
+                lieu: $row->lieu,
+                attitude: $row->attitude,
+                sourceLabel: $this->sourceLabel
             ));
     }
 
@@ -107,15 +81,105 @@ final class KapiiaSourceRepository
     private function applyCriterion($query, CriterionInterface $criterion): void
     {
         match (true) {
-            $criterion instanceof RangeCriterion    => $query->whereBetween(
-                'usagers_view.' . $criterion->column(),
-                [$criterion->min(), $criterion->max()],
-            ),
+            $criterion instanceof RangeCriterion => $this->applyRangeCriterion($query, $criterion),
             $criterion instanceof DiscreteCriterion => $query->where(
-                'usagers_view.' . $criterion->column(),
+                'usagers_view.'.$criterion->column(),
                 $criterion->value(),
             ),
             default => null,
         };
+    }
+
+    /**
+     * Applique un critère de plage à la query.
+     * Supporte les plages partielles (borne min ou max absente).
+     */
+    private function applyRangeCriterion($query, RangeCriterion $criterion): void
+    {
+        $column = 'usagers_view.'.$criterion->column();
+        $min = $criterion->min();
+        $max = $criterion->max();
+
+        if ($min !== null && $max !== null) {
+            $query->whereBetween($column, [$min, $max]);
+        } elseif ($min !== null) {
+            $query->where($column, '>=', $min);
+        } elseif ($max !== null) {
+            $query->where($column, '<=', $max);
+        }
+        // Les deux bornes absentes : le sanitiseur garantit que ce cas n'arrive jamais.
+    }
+
+    /**
+     * @param  array<int, array{precision: PrecisionInterface, parameters: array}>  $precisions
+     */
+    public function getIncidentsWithPrecisions(
+        ArchetypePopulationFilter $filter,
+        array $precisions,
+    ): Collection {
+        $query = $this->connection
+            ->table('incidents')
+            ->join('usagers_view', 'incidents.usager_id', '=', 'usagers_view.id')
+            ->join('incident_intitules', 'incidents.incident_intitule_id', '=', 'incident_intitules.id')
+            ->join('incident_attitudes', 'incidents.incident_attitude_id', '=', 'incident_attitudes.id')
+            ->select([
+                'incident_intitules.intitule as intitule',
+                'incidents.gravite',
+                'incidents.date_incident',
+                'incidents.lieu',
+                'incident_attitudes.attitude as attitude',
+            ])
+            ->where($this->populationConstraints($filter));
+
+        $this->applyPrecisionsToQuery($query, $precisions, PrecisionTargetEnum::Incidents);
+
+        return $query->get()->map(fn ($row) => new IncidentData(
+            intitule: $row->intitule,
+            gravite: (int) $row->gravite,
+            dateIncident: $row->date_incident,
+            lieu: $row->lieu,
+            attitude: $row->attitude,
+            sourceLabel: $this->sourceLabel,
+        ));
+    }
+
+    public function countPopulationWithPrecisions(
+        ArchetypePopulationFilter $filter,
+        array $precisions,
+    ): int {
+        $query = $this->connection
+            ->table('usagers_view')
+            ->where($this->populationConstraints($filter));
+
+        // Seules les précisions de type PopulationFilter affectent le count
+        $populationPrecisions = array_filter(
+            $precisions,
+            fn ($p) => $p['precision']->type() === PrecisionTypeEnum::PopulationFilter,
+        );
+
+        $this->applyPrecisionsToQuery($query, $populationPrecisions, null);
+
+        return (int) $query->count();
+    }
+
+    /**
+     * Applique les précisions pertinentes à une query.
+     * Si $target est null, applique toutes les précisions fournies.
+     * Sinon, applique seulement celles qui matchent le target.
+     */
+    private function applyPrecisionsToQuery(
+        $query,
+        array $precisions,
+        ?PrecisionTargetEnum $target,
+    ): void {
+        foreach ($precisions as $entry) {
+            $precision = $entry['precision'];
+
+            if ($target !== null && $precision->target() !== $target) {
+                continue;
+            }
+
+            $precision->apply($query, $entry['parameters']);
+        }
     }
 }

@@ -15,14 +15,14 @@ final class CreateArchetypeCriterionUseCase
     public function execute(CreateArchetypeCriterionCommand $command): ArchetypeCriterion
     {
         $criterion = new ArchetypeCriterion(
-            id:                  (string) Str::ulid(),
-            key:                 $command->key,
-            label:               $command->label,
-            type:                $command->type,
-            options:             $command->options,
-            nomenclaturePrefix:  $command->nomenclaturePrefix,
-            sourceColumn:        $command->sourceColumn,
-            sortOrder:           $command->sortOrder,
+            id: strtolower((string) Str::ulid()),
+            key: $command->key,
+            label: $command->label,
+            type: $command->type,
+            options: $command->options,
+            nomenclaturePrefix: $command->nomenclaturePrefix,
+            sourceColumn: $command->sourceColumn,
+            sortOrder: $command->sortOrder,
         );
 
         $this->repository->save($criterion);

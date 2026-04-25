@@ -4,26 +4,26 @@
 
 namespace App\BI\Analysis\Application\UseCase\RunAnalysis;
 
-use App\BI\Analysis\Domain\AnalysisResult;
-use App\BI\Analysis\Domain\Repository\AnalysisResultRepositoryInterface;
+use App\BI\Analysis\Application\PopulationFilterBuilder;
 use App\BI\Analysis\Application\QueryOrchestrator;
 use App\BI\Analysis\Application\ResultAggregator;
-use App\BI\Analysis\Application\PopulationFilterBuilder;
+use App\BI\Analysis\Domain\AnalysisResult;
+use App\BI\Analysis\Domain\Repository\AnalysisResultRepositoryInterface;
 use App\BI\DataSource\Domain\Repository\SourceConnectionRepositoryInterface;
-use App\BI\Profiling\Domain\Repository\ArchetypeRepositoryInterface;
 use App\BI\Profiling\Domain\Repository\ArchetypeCriterionRepositoryInterface;
+use App\BI\Profiling\Domain\Repository\ArchetypeRepositoryInterface;
 use Illuminate\Support\Str;
 
 final class RunAnalysisUseCase
 {
     public function __construct(
-        private readonly ArchetypeRepositoryInterface          $archetypeRepository,
+        private readonly ArchetypeRepositoryInterface $archetypeRepository,
         private readonly ArchetypeCriterionRepositoryInterface $criterionRepository,
-        private readonly SourceConnectionRepositoryInterface   $sourceRepository,
-        private readonly AnalysisResultRepositoryInterface     $resultRepository,
-        private readonly QueryOrchestrator                     $orchestrator,
-        private readonly ResultAggregator                      $aggregator,
-        private readonly PopulationFilterBuilder               $filterBuilder,
+        private readonly SourceConnectionRepositoryInterface $sourceRepository,
+        private readonly AnalysisResultRepositoryInterface $resultRepository,
+        private readonly QueryOrchestrator $orchestrator,
+        private readonly ResultAggregator $aggregator,
+        private readonly PopulationFilterBuilder $filterBuilder,
     ) {}
 
     public function execute(RunAnalysisCommand $command): AnalysisResult
@@ -50,7 +50,7 @@ final class RunAnalysisUseCase
         // 4. Charger les sources demandées
         $sources = array_filter(
             array_map(
-                fn($id) => $this->sourceRepository->findById($id),
+                fn ($id) => $this->sourceRepository->findById($id),
                 $command->sourceConnectionIds,
             ),
         );
@@ -69,12 +69,12 @@ final class RunAnalysisUseCase
 
         // 7. Persister le résultat en cache
         $result = new AnalysisResult(
-            id:                  (string) Str::ulid(),
-            archetypeId:         $command->archetypeId,
+            id: strtolower((string) Str::ulid()),
+            archetypeId: $command->archetypeId,
             sourceConnectionIds: $command->sourceConnectionIds,
-            payload:             $payload,
-            populationCount:     $payload['population_count'] ?? 0,
-            expiresAt:           now()->addHours($command->cacheTtlHours)->toISOString(),
+            payload: $payload,
+            populationCount: $payload['population_count'] ?? 0,
+            expiresAt: now()->addHours($command->cacheTtlHours)->toISOString(),
         );
 
         $this->resultRepository->save($result);
